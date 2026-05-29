@@ -1,0 +1,194 @@
+---
+
+# CameraScanner SDK — Android Devlog
+
+---
+
+## Origin
+
+Windows Python SDK ported to Android. Architecture and detection philosophy carried over; code rewritten from scratch in Kotlin. Target segments (Web3/airdrop, dating, PvP) are mobile-first.
+
+---
+
+## Project Setup
+
+Android Studio Panda 4 | Min SDK: API 26 | Kotlin DSL
+
+---
+
+## v1.0.0 — Initial Port
+
+4 detection methods and a single public entry point established.
+
+- METHOD 1: Checks whether known virtual camera packages are installed.
+- METHOD 2: Analyzes camera hardware characteristics.
+- METHOD 3: Scans the kernel filesystem for virtual camera drivers.
+- METHOD 4: Checks system alert window permission and active processes.
+- Entry point: `isFakeCamera()`. Returns: `isFake`, `confidence` (HIGH / MEDIUM / CLEAN), `detected`, `errors`.
+
+---
+
+## v1.0.1 — False Positive Fixes
+
+- METHOD 2: Suspicion criteria narrowed.
+- METHOD 3: Inaccessible paths on non-rooted devices now logged to errors instead of failing silently.
+- METHOD 4: Overlay detection corrected.
+- METHOD 4: Running process list limitation on API 26+ documented.
+
+---
+
+## v1.0.2 — METHOD 3 and 4 Restructure
+
+- METHOD 3 made root-aware.
+- METHOD 4: Active package query replaces running process check. Missing permission logged to errors.
+
+---
+
+## v1.0.3 — v1.0.2 Applied
+
+v1.0.2 changes were defined but not applied to source. Applied this session.
+
+---
+
+## v1.0.4 — Whitelist
+
+METHOD 4 false positives on legitimate apps resolved. 15-entry whitelist added.
+
+---
+
+## v1.0.5 — Manifest
+
+Manifest did not exist. 4 lint errors resolved: package visibility, camera feature declaration, usage stats permission, namespace.
+
+---
+
+## v1.1.0 — UI and First Device Test
+
+- Terminal-style test UI added.
+- API 33 emulator test: engine booted correctly, no crash on missing permissions.
+- Camera permission was missing. Added.
+- Settings redirect added for usage stats permission grant.
+
+---
+
+## v1.2.0 — Hardening
+
+- ANR fixed: scan moved from UI thread to IO thread.
+- METHOD 3: Sorting bug fixed.
+- Permission flow rewritten: camera → usage stats → scan order enforced.
+- Public API surface locked to single entry point.
+- ADB backup disabled.
+
+---
+
+## v1.2.1 — Architecture Review
+
+No code changes. Risk findings logged and queued.
+
+---
+
+## v1.2.2 — Zero-Camera Edge Case
+
+Empty camera list now returns UNKNOWN confidence instead of CLEAN.
+
+---
+
+## v1.2.3 — Documentation
+
+`isFakeCamera()` fully documented.
+
+---
+
+## v1.2.4 — Activity Exposure Mitigation
+
+Direct external Intent launches rejected. Only system launcher invocations accepted.
+
+---
+
+## v1.2.5 — Notes
+
+UTC timestamp documented. Module separation plan logged.
+
+---
+
+## v1.2.6 — OEM False Positive Fix
+
+- METHOD 3: OEM ISP nodes no longer produce false positives.
+- Root package visibility fixed on API 30+.
+
+---
+
+## v1.4.0 — METHOD 5: Memory and Hook Detection
+
+- Process memory scan added.
+- Ptrace detection added. Informational on debug builds; HIGH threat on release.
+
+---
+
+## v1.4.1 — METHOD 5 Hardening
+
+- False positive scope narrowed.
+- Static lists moved outside the scan loop.
+- Performance instrumentation added.
+- Xiaomi HyperOS physical device test passed.
+
+---
+
+## v1.4.2 — METHOD 1b: Clone Space Detection
+
+Virtual camera apps installed in a secondary Android user profile are invisible to METHOD 1. Two checks added:
+
+- Detects whether the app is running in a secondary user space.
+- Classifies secondary spaces: OEM Dual App demoted to warning; unknown sandbox escalated to threat.
+- Enterprise managed profiles excluded from threat scope.
+
+---
+
+## v1.4.3 — SSOT Blacklist
+
+Package list consolidated to a single source. One change updates both manifest and runtime list automatically.
+
+---
+
+## v1.4.4 — METHOD 5: Extended Coverage
+
+Additional sub-check added to METHOD 5.
+
+---
+
+## v1.4.5 — Fail-Open Enforcement
+
+Any hooked or restricted system API now writes an explicit blind-spot marker to the result instead of returning empty. A fully blinded scan cannot produce CLEAN.
+
+---
+
+## v1.4.6 — SELinux and API Fragmentation
+
+- SELinux path blocking handled with automatic fallback.
+- Hook-induced service crashes no longer propagate to the caller.
+- OEM-level API restrictions treated as blind-spot findings.
+
+---
+
+## v1.4.7 — Performance and Memory
+
+Zero new constant allocations per scan. O(1) deduplication. Streaming IO for proc readers. Performance counters compiled out of release builds.
+
+---
+
+## v1.4.8 — ProGuard / R8
+
+Distribution rules defined. Public API surface preserved; internal symbols aggressively obfuscated. Kotlin metadata stripped from internal classes.
+
+---
+
+## v1.4.9 — Phase 1 Complete
+
+Version strings, documentation, and KDoc synchronized. Phase 1 closed.
+
+---
+
+## Phase 2 — Active
+
+- Target 1: Physical device testing on API 26/28/30 and OEM ROMs.
+- Target 2: SDK and test harness module separation. Manifest merge issue must be resolved before AAR packaging.

@@ -1,0 +1,134 @@
+# CameraScanner SDK — Windows Devlog
+
+---
+
+## Origin
+
+Python proof-of-concept for virtual camera detection on Windows. Brought to production state at v0.3.3, then architecture and detection philosophy ported to Android. Windows SDK served as the reference implementation.
+
+---
+
+## Project Setup
+
+- Language: Python
+- Platform: Windows only (winreg dependency)
+- Entry point: `is_fake_camera()` → dict output
+- Distribution: single module (`camera_scanner.py`)
+
+---
+
+## v0.1.0 — Initial PoC
+
+Two detection methods, basic boolean output.
+
+**METHOD 1 — DeviceClasses registry scan**
+Reads `SYSTEM\CurrentControlSet\Control\DeviceClasses`. Checks device display names and IDs against a 7-entry blacklist. 3-tier classification: TIER 1 (blacklist match, HIGH), TIER 2 (suspicious path patterns, MEDIUM), TIER 3 (physical device markers, CLEAN).
+
+**METHOD 2 — DEVICEMAP\VIDEO registry scan**
+Reads `HARDWARE\DEVICEMAP\VIDEO`. Same classification logic applied to registered video devices.
+
+**`is_fake_camera()`**
+Returns `True` or `False`. No confidence level, no device names, no error reporting.
+
+**Known issues at this stage:**
+
+| # | Problem |
+|---|---------|
+| 1 | TIER 1 normalized case; TIER 2 and TIER 3 did not — silent mismatches |
+| 2 | `__main__` block imported the module itself — circular import |
+| 3 | Blacklist had 7 entries — DroidCam, Iriun, Snap Camera, mmhmm, Reincubate, Nvidia Broadcast undetected |
+| 4 | TIER 2 used OR logic — legitimate devices with ROOT/SWD in registry path flagged as suspicious |
+| 5 | Registry errors silently swallowed with `pass` — no visibility into scan failures |
+| 6 | `is_fake_camera()` returned only True/False — no confidence, no device names, no timestamp |
+| 7 | All strings in Turkish |
+| 8 | No platform check — importing on Linux/Mac crashed with cryptic winreg error |
+| 9 | No version tracking |
+| 10 | OBS v28+ not detected — stopped registering under DeviceClasses |
+| 11 | Nahimic audio driver false positive on every SteelSeries headset user |
+
+---
+
+## v0.2.0 — Rich Output and Hardening
+
+- **Case normalization:** `TIER2_KEYWORDS` and `TIER3_KEYWORDS` defined as uppercase constants at module level. All comparisons now consistent
+- **Circular import removed:** `import camera_scanner` self-import removed from `__main__` block
+- **Blacklist expanded:** 7 → 13 entries. Added: droidcam, iriun, mmhmm, snap camera, reincubate, nvidia broadcast
+- **TIER 2 logic tightened:** Changed from OR to AND — both display name and device ID must contain a suspicious keyword, and no physical markers (USB, PCI, VID_) may be present
+- **Logging added:** Python `logging` module integrated. Registry errors logged at WARNING level; FriendlyName failures at DEBUG. All errors also collected into `errors[]` list in output
+- **Rich output:** `is_fake_camera()` now returns full dict: `is_fake`, `confidence` (HIGH / MEDIUM / CLEAN), `detected`, `safe_devices`, `errors`, `scanned_at`, `sdk_version`
+- **Platform guard added:** Module raises `EnvironmentError` on import if not running on Windows
+- **VERSION constant added:** `VERSION = "0.2.0"` at module level, exposed in output as `sdk_version`
+- **Full English translation:** All comments, log messages, docstrings, and error strings converted from Turkish
+
+---
+
+## v0.2.1 — Whitelist
+
+TIER 2 was flagging SteelSeries Nahimic audio driver (`Nahimic_BTLink`, `Nahimic_Mirroring`, `Nahimic_XVAD`) as MEDIUM confidence on every SteelSeries headset user. These entries share the `SWD\DRIVERENUM` path pattern with suspicious virtual devices.
+
+`WHITELIST` constant added. Checked before TIER 2 classification — matched devices skipped entirely. Entries include: nahimic, realtek, nvidia audio, steelseries, audio, hdaudio, and related audio driver strings.
+
+---
+
+## v0.3.0 — METHOD 3 and METHOD 4
+
+- **METHOD 3 — WMI scan:** Queries `Win32_PnPEntity` for all devices in the Camera PNP class. Gracefully skipped if `wmi` module not installed, with install instruction in warning log
+- **METHOD 4 — DirectShow CLSID scan:** OBS v28+ stopped registering under DeviceClasses — METHOD 1, 2, and 3 all missed it. Discovery via live registry debug scan revealed OBS registers exclusively under `SOFTWARE\Classes\CLSID` and `SOFTWARE\WOW6432Node\Classes\CLSID`. METHOD 4 scans both paths against a `CLSID_BLACKLIST`. OBS Virtual Camera confirmed detected
+
+---
+
+## v0.3.1 — CLSID False Positive Fix
+
+`CLSID_BLACKLIST` introduced. Generic string `"virtual"` removed from `BLACKLIST` — was matching legitimate Windows system CLSIDs (e.g. `Virtual Audio Cable` used by accessibility software). Detection now requires exact CLSID match for METHOD 4.
+
+---
+
+## v0.3.2 — Code Quality Pass
+
+- **Method execution order fixed:** METHOD 3 was executing before METHOD 2. Reordered to 1→2→3→4 throughout `scan_devices()`
+- **winreg resource leak fixed:** All `winreg.OpenKey()` calls converted to `with` context managers
+- **CLSID early exit added:** METHOD 4 previously scanned entire CLSID hive (tens of thousands of entries) even after all targets found. Scan now stops when match count reaches `len(CLSID_BLACKLIST)`
+- **TIER 2 display_name check removed:** `ROOT`, `SWD`, `DRIVERENUM` only appear in registry device ID paths, never in display names. Display name check was dead code — removed. TIER 2 now checks `device_id_upper` only
+- **`__all__` defined:** `__all__ = ["is_fake_camera"]`. Prevents `scan_devices` and `classify_device` from being exposed on wildcard import
+- **Type hints added:** Return type annotations added to `classify_device()`, `scan_devices()`, `is_fake_camera()`
+
+---
+
+## v0.3.3 — Bug Fixes
+
+- **METHOD 2 real device name fix (critical):** METHOD 2 was calling `classify_device(value_name, data_str)` where `value_name` was a registry value name (e.g. `\Device\Video0`) and `data_str` was the raw cast of `value_data`. Neither is a real device name or ID — blacklist matching was non-functional in METHOD 2. Fixed: `value_data` is a registry path pointing to the actual device config key; METHOD 2 now follows that path and reads `DriverDesc` and `MatchingDeviceId` directly
+- **CLSID early exit counter isolated:** v0.3.2 early exit used `len(tier1_blacklisted)` as stop condition. Since this set is shared across all methods, detections from METHOD 1–3 could push the counter over the threshold before METHOD 4 started — silently skipping the entire CLSID scan. Fixed: replaced with per-path local counter `clsid_found`, reset to 0 at each path iteration
+- **Docstring version example decoupled:** `is_fake_camera()` docstring showed a hardcoded version string. Updated to format reference
+
+**Integration test (dummy_game_launcher.py):**
+Single-import integration test written. Simulates game startup — calls `is_fake_camera()` before engine boots, exits on detection. Test result: OBS Virtual Camera (METHOD 4), NVVAD Wave (METHOD 1/2), Steam Streaming Speakers (METHOD 1/2) all detected. Engine blocked before launch. End-to-end validation complete.
+
+---
+
+## Version History
+
+| Version | Change |
+|---------|--------|
+| 0.1.0 | Initial PoC — METHOD 1 + METHOD 2, True/False output |
+| 0.2.0 | Rich output, logging, platform guard, VERSION, English translation |
+| 0.2.1 | WHITELIST — Nahimic false positive resolved |
+| 0.3.0 | METHOD 3 (WMI) + METHOD 4 (DirectShow CLSID) |
+| 0.3.1 | CLSID_BLACKLIST — Windows system CLSID false positives eliminated |
+| 0.3.2 | Method order fix, winreg context managers, CLSID early exit, TIER 2 correction, `__all__`, type hints |
+| 0.3.3 | METHOD 2 real device name fix, CLSID counter isolated, integration test complete |
+
+---
+
+## Current State (v0.3.3)
+
+- METHOD 1 — DeviceClasses registry scan
+- METHOD 2 — DEVICEMAP\VIDEO registry scan (real DriverDesc)
+- METHOD 3 — WMI Win32_PnPEntity scan
+- METHOD 4 — DirectShow CLSID scan (OBS v28+ detection)
+- `is_fake_camera()` — sole public entry point
+- `WHITELIST` — Nahimic and audio driver false positive protection
+- `__all__` — public API surface locked
+- Production-ready structured output with confidence tiers, error reporting, versioning
+- Integration test complete
+
+**Next:** Android SDK — see Android DEVLOG.

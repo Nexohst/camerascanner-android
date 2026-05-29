@@ -1,0 +1,48 @@
+Copyright (c) 2026 Nexohst. All rights reserved.
+
+CAMERASCANNER SDK — PROPRIETARY LICENSE
+
+This repository contains documentation and release history for the CameraScanner SDK.
+The SDK source code is not publicly available.
+
+---
+
+GRANT OF USE
+
+A commercial license grants the licensee the right to integrate and use the
+CameraScanner SDK in their application. The license is non-exclusive,
+non-transferable, and limited to the version(s) covered by the purchase.
+
+---
+
+RESTRICTIONS
+
+The following are prohibited without prior written permission from Nexohst:
+
+- Redistributing, sublicensing, or reselling the SDK or any part of it
+- Reverse engineering, decompiling, or disassembling the SDK
+- Removing or altering any proprietary notices in the SDK
+- Using the SDK in any product that competes directly with the SDK itself
+
+---
+
+DOCUMENTATION
+
+The documentation, devlog, and release notes in this repository are provided
+for evaluation and integration reference. They may not be reproduced or
+redistributed without attribution.
+
+---
+
+NO WARRANTY
+
+The SDK is provided "as is" without warranty of any kind, express or implied.
+Nexohst is not liable for any damages arising from the use or inability to use
+the SDK.
+
+---
+
+CONTACT
+
+For licensing inquiries and integration: reach out via the contact information
+provided at the point of purchase or through the project's official channel.
